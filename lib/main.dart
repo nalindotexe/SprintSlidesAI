@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:html' as html;
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -9,22 +12,82 @@ void main() {
 class SprintSlidesApp extends StatelessWidget {
   const SprintSlidesApp({super.key});
 
-  static const Color kBrand = Color(0xFF4F46E5);
+  // Modern Dark Theme Colors
+  static const Color kBackground = Color(0xFF0A0D14);
+  static const Color kCardBg = Color(0xFF1C2130);
+  static const Color kPrimary = Color(0xFF6366F1); // Indigo 500
+  static const Color kTextMain = Colors.white;
+  static const Color kTextSub = Color(0xFF9CA3AF); // Gray 400
 
   @override
   Widget build(BuildContext context) {
-    final theme = ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: kBrand),
-      inputDecorationTheme: const InputDecorationTheme(
-        border: OutlineInputBorder(),
-      ),
-    );
-
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: "SprintSlides",
-      theme: theme,
+      title: 'SprintSlides',
+      theme: ThemeData(
+        useMaterial3: true,
+        scaffoldBackgroundColor: kBackground,
+        brightness: Brightness.dark,
+        colorScheme: const ColorScheme.dark(
+          primary: kPrimary,
+          surface: kCardBg,
+          onSurface: kTextMain,
+          background: kBackground,
+        ),
+        textTheme: const TextTheme(
+          headlineMedium: TextStyle(
+            color: kTextMain,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+          ),
+          titleMedium: TextStyle(
+            color: kTextMain,
+            fontWeight: FontWeight.w700,
+          ),
+          bodyLarge: TextStyle(color: kTextMain, fontSize: 16),
+          bodyMedium: TextStyle(color: kTextSub, fontSize: 14),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: kBackground,
+          hintStyle: const TextStyle(color: Colors.grey),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: kPrimary, width: 2),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        ),
+        sliderTheme: SliderThemeData(
+          activeTrackColor: kPrimary,
+          inactiveTrackColor: kBackground,
+          thumbColor: kPrimary,
+          trackHeight: 6.0,
+          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10.0),
+          overlayShape: const RoundSliderOverlayShape(overlayRadius: 20.0),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: kPrimary,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            textStyle:
+                const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+        ),
+      ),
       home: const SprintSlidesHome(),
     );
   }
@@ -38,37 +101,33 @@ class SprintSlidesHome extends StatefulWidget {
 }
 
 class _SprintSlidesHomeState extends State<SprintSlidesHome> {
-  final _topic = TextEditingController(text: "photosynthesis");
-  final _groqKey = TextEditingController();
+  final _topic = TextEditingController();
+  final PageController _pageController = PageController();
 
+  // State
+  double _numSlides = 5;
   bool _loading = false;
   String? _error;
-
   List<SprintSlide> _slides = [];
-  int _index = 0;
+  int _currentIndex = 0;
+
+  // ✅ Backend URLs
+  static const String _backendUrl = "http://localhost:8000/generateDeck";
+  static const String _pdfUrl = "http://localhost:8000/downloadPdf";
 
   @override
   void dispose() {
     _topic.dispose();
-    _groqKey.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
-  // ✅ Groq models (fast + reliable for hackathons)
-  static const String _model = "llama-3.1-8b-instant";
-  // Alternatives you can try:
-  // static const String _model = "llama-3.3-70b-versatile";
-
   Future<void> _generateDeck() async {
-    final topic = _topic.text.trim();
-    final key = _groqKey.text.trim();
+    final topicText = _topic.text.trim();
+    final count = _numSlides.round();
 
-    if (topic.isEmpty) {
-      setState(() => _error = "Please enter a topic.");
-      return;
-    }
-    if (key.isEmpty) {
-      setState(() => _error = "Please paste your Groq API key.");
+    if (topicText.isEmpty) {
+      _showSnack("Please enter a topic first.");
       return;
     }
 
@@ -76,142 +135,212 @@ class _SprintSlidesHomeState extends State<SprintSlidesHome> {
       _loading = true;
       _error = null;
       _slides = [];
-      _index = 0;
+      _currentIndex = 0;
     });
 
     try {
-      final prompt = _buildPrompt(topic);
-
-      final url = Uri.parse("https://api.groq.com/openai/v1/chat/completions");
-
-      final payload = {
-        "model": _model,
-        "messages": [
-          {
-            "role": "system",
-            "content":
-                "You are an expert academic coach. You output ONLY valid JSON."
-          },
-          {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.4,
-        "max_tokens": 1200,
-      };
-
       final resp = await http.post(
-        url,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer $key",
-        },
-        body: jsonEncode(payload),
+        Uri.parse(_backendUrl),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "topic": topicText,
+          "slideCount": count,
+        }),
       );
 
       if (resp.statusCode != 200) {
-        throw Exception(
-          "Groq error (${resp.statusCode}): ${resp.body}",
-        );
+        throw Exception(_cleanBackendError(resp.body));
       }
 
       final decoded = jsonDecode(resp.body);
-
-      final rawText = decoded["choices"]?[0]?["message"]?["content"]?.toString();
-
-      if (rawText == null || rawText.trim().isEmpty) {
-        throw Exception("Groq returned empty content.");
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception("Invalid backend response format.");
       }
 
-      // cleanup
-      final cleaned = _forceJsonOnly(_stripMarkdown(rawText));
-
-      Map<String, dynamic> parsed;
-      try {
-        parsed = jsonDecode(cleaned);
-      } catch (_) {
-        throw Exception(
-          "Groq returned invalid JSON.\n\nRaw:\n$rawText\n\nCleaned:\n$cleaned",
-        );
-      }
-
-      final slidesJson = parsed["slides"];
+      final slidesJson = decoded["slides"];
       if (slidesJson is! List) {
-        throw Exception("Response JSON missing 'slides' list.");
+        throw Exception("Backend response missing slides list.");
       }
 
       final slides = slidesJson
           .map((e) => SprintSlide.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      if (slides.length != 5) {
-        throw Exception("Expected 5 slides, got ${slides.length}.");
+      if (slides.length != count) {
+        throw Exception("Expected $count slides, got ${slides.length}.");
       }
 
       setState(() {
         _slides = slides;
-        _index = 0;
+        _currentIndex = 0;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController.hasClients) _pageController.jumpToPage(0);
       });
     } catch (e) {
-      setState(() => _error = e.toString().replaceAll("Exception:", "").trim());
+      setState(() {
+        _error = e.toString().replaceAll("Exception:", "").trim();
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  void _prev() {
-    if (_index > 0) setState(() => _index--);
+  Future<void> _downloadPdf() async {
+    if (_slides.isEmpty) {
+      _showSnack("Generate a deck first.");
+      return;
+    }
+
+    final topicText = _topic.text.trim();
+    if (topicText.isEmpty) {
+      _showSnack("Topic missing.");
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final slidesJson = _slides.map((s) => s.toJson()).toList();
+
+      final resp = await http.post(
+        Uri.parse(_pdfUrl),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "topic": topicText,
+          "slides": slidesJson,
+        }),
+      );
+
+      if (resp.statusCode != 200) {
+        throw Exception(_cleanBackendError(resp.body));
+      }
+
+      final Uint8List pdfBytes = resp.bodyBytes;
+      final blob = html.Blob([pdfBytes], 'application/pdf');
+      final url = html.Url.createObjectUrlFromBlob(blob);
+
+      final safeTopic =
+          topicText.replaceAll(RegExp(r'[^a-zA-Z0-9_\- ]'), '').trim();
+      final filename = "SprintSlides_${safeTopic.replaceAll(' ', '_')}.pdf";
+
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute("download", filename)
+        ..click();
+
+      html.Url.revokeObjectUrl(url);
+      _showSnack("PDF downloaded ✅");
+    } catch (e) {
+      setState(() {
+        _error = e.toString().replaceAll("Exception:", "").trim();
+      });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
-  void _next() {
-    if (_index < _slides.length - 1) setState(() => _index++);
+  void _showSnack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: Colors.redAccent,
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
-    final brand = SprintSlidesApp.kBrand;
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text("SprintSlides"),
+        centerTitle: false,
+        backgroundColor: SprintSlidesApp.kBackground,
+        elevation: 0,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(color: Colors.white.withOpacity(0.1), height: 1),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: SprintSlidesApp.kPrimary.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+                border:
+                    Border.all(color: SprintSlidesApp.kPrimary.withOpacity(0.3)),
+              ),
+              child: const Icon(Icons.flash_on_rounded,
+                  color: Color(0xFF818CF8), size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Text("SprintSlides",
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        actions: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 20.0),
+              child: Text(
+                _slides.isEmpty
+                    ? "Ready"
+                    : "${_currentIndex + 1} / ${_slides.length}",
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: SprintSlidesApp.kTextSub,
+                ),
+              ),
+            ),
+          )
+        ],
       ),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 980),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              children: [
-                _TopPanel(
+          constraints: const BoxConstraints(maxWidth: 900),
+          child: Column(
+            children: [
+              const SizedBox(height: 30),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: _InputCard(
                   topicController: _topic,
-                  apiKeyController: _groqKey,
-                  loading: _loading,
+                  numSlides: _numSlides,
+                  onSliderChanged: (val) => setState(() => _numSlides = val),
                   onGenerate: _generateDeck,
+                  onDownloadPdf: _downloadPdf,
+                  isLoading: _loading,
+                  downloadEnabled: _slides.isNotEmpty && !_loading,
                 ),
-                const SizedBox(height: 18),
-                if (_error != null)
-                  _ErrorBox(text: _error!)
-                else if (_loading)
-                  const _LoadingBox()
-                else if (_slides.isEmpty)
-                  const _EmptyState()
-                else
-                  SlideViewer(
-                    slides: _slides,
-                    index: _index,
-                    onPrev: _prev,
-                    onNext: _next,
-                    brand: brand,
-                  ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 30),
+              Expanded(
+                child: _loading
+                    ? const Center(child: _LoadingIndicator())
+                    : _error != null
+                        ? Center(child: _ErrorDisplay(error: _error!))
+                        : _slides.isEmpty
+                            ? const _EmptyStateDisplay()
+                            : _SlideDeckViewer(
+                                controller: _pageController,
+                                slides: _slides,
+                                onPageChanged: (idx) {
+                                  setState(() => _currentIndex = idx);
+                                },
+                              ),
+              ),
+              const SizedBox(height: 20),
+            ],
           ),
         ),
       ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.only(bottom: 12, top: 8),
+      bottomNavigationBar: const Padding(
+        padding: EdgeInsets.only(bottom: 24),
         child: Text(
-          "Powered by Flutter Web + Groq ⚡",
+          "Powered by Flutter + Backend ⚡",
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.black.withOpacity(0.55)),
+          style: TextStyle(color: SprintSlidesApp.kTextSub, fontSize: 12),
         ),
       ),
     );
@@ -219,183 +348,315 @@ class _SprintSlidesHomeState extends State<SprintSlidesHome> {
 }
 
 /// -------------------------
-/// Prompt
+/// UI Components
 /// -------------------------
-String _buildPrompt(String topic) {
-  return """
-Create a 5-slide revision deck for the topic: "$topic".
 
-Focus strongly on:
-1) Active Recall
-2) Structural Learning
+class _InputCard extends StatelessWidget {
+  final TextEditingController topicController;
+  final double numSlides;
+  final ValueChanged<double> onSliderChanged;
+  final VoidCallback onGenerate;
+  final VoidCallback onDownloadPdf;
+  final bool isLoading;
+  final bool downloadEnabled;
 
-IMPORTANT RESPONSE RULES:
-- Return ONLY valid JSON.
-- No Markdown.
-- No code fences.
-- No explanation outside JSON.
-- Exactly 5 slides.
-
-JSON schema:
-{
-  "slides": [
-    { "type": "String", "title": "String", "content": "String" }
-  ]
-}
-
-Slide requirements:
-- type must be one of: ["overview","core_concepts","active_recall","examples","exam_tips"]
-- title should be short and strong
-- content should be concise bullet-style text separated by newlines (\\n)
-
-Make EXACTLY 5 slides.
-""".trim();
-}
-
-/// -------------------------
-/// Helpers
-/// -------------------------
-String _stripMarkdown(String t) {
-  t = t.trim();
-  if (t.startsWith("```")) {
-    final firstNewline = t.indexOf("\n");
-    if (firstNewline != -1) {
-      t = t.substring(firstNewline + 1);
-    }
-    final lastFence = t.lastIndexOf("```");
-    if (lastFence != -1) {
-      t = t.substring(0, lastFence);
-    }
-  }
-  return t.trim();
-}
-
-String _forceJsonOnly(String t) {
-  t = t.trim();
-  final start = t.indexOf("{");
-  final end = t.lastIndexOf("}");
-  if (start == -1 || end == -1 || end <= start) return t;
-  return t.substring(start, end + 1).trim();
-}
-
-/// -------------------------
-/// UI Widgets
-/// -------------------------
-class _TopPanel extends StatelessWidget {
-  const _TopPanel({
+  const _InputCard({
     required this.topicController,
-    required this.apiKeyController,
-    required this.loading,
+    required this.numSlides,
+    required this.onSliderChanged,
     required this.onGenerate,
+    required this.onDownloadPdf,
+    required this.isLoading,
+    required this.downloadEnabled,
   });
 
-  final TextEditingController topicController;
-  final TextEditingController apiKeyController;
-  final bool loading;
-  final VoidCallback onGenerate;
-
   @override
   Widget build(BuildContext context) {
-    final brand = SprintSlidesApp.kBrand;
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: Colors.black.withOpacity(0.07)),
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: SprintSlidesApp.kCardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: topicController,
-                    decoration: const InputDecoration(
-                      labelText: "Topic",
-                      hintText: "e.g., Photosynthesis / Electrostatics / DSA",
-                    ),
-                    onSubmitted: (_) => onGenerate(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("What do you want to learn?",
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: SprintSlidesApp.kTextSub,
+                      letterSpacing: 1.0,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: topicController,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+                decoration: const InputDecoration(
+                  hintText: "e.g., Quantum Physics, French History...",
+                  prefixIcon:
+                      Icon(Icons.search, color: SprintSlidesApp.kTextSub),
+                ),
+                onSubmitted: (_) => onGenerate(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Divider(color: Colors.white.withOpacity(0.05)),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.layers_outlined,
+                      size: 16, color: Color(0xFF818CF8)),
+                  const SizedBox(width: 8),
+                  Text("Deck Size",
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: SprintSlidesApp.kTextSub,
+                          letterSpacing: 1.0,
+                          fontWeight: FontWeight.bold)),
+                ],
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: SprintSlidesApp.kPrimary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: SprintSlidesApp.kPrimary.withOpacity(0.2)),
+                ),
+                child: Text(
+                  "${numSlides.round()} Slides",
+                  style: const TextStyle(
+                    color: Color(0xFF818CF8),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: apiKeyController,
-                    decoration: const InputDecoration(
-                      labelText: "Groq API Key",
-                      hintText: "Paste Groq API key",
-                    ),
-                    obscureText: true,
-                    onSubmitted: (_) => onGenerate(),
-                  ),
-                ),
-              ],
+              ),
+            ],
+          ),
+          Slider(
+            value: numSlides,
+            min: 5,
+            max: 15,
+            divisions: 10,
+            onChanged: onSliderChanged,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: isLoading ? null : onGenerate,
+              icon: isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.auto_awesome),
+              label: Text(isLoading
+                  ? "Generating Deck..."
+                  : "Generate Sprint Deck"),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: brand,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 14,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  onPressed: loading ? null : onGenerate,
-                  icon: loading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.auto_awesome),
-                  label: Text(loading ? "Generating..." : "Generate Deck"),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  "5-slide Sprint Deck • Active Recall • Structural Learning",
-                  style: TextStyle(color: Colors.black.withOpacity(0.55)),
-                ),
-              ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: downloadEnabled ? onDownloadPdf : null,
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              label: const Text("Download PDF"),
+              style: OutlinedButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                side: BorderSide(
+                    color: SprintSlidesApp.kPrimary.withOpacity(0.6)),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ErrorBox extends StatelessWidget {
-  const _ErrorBox({required this.text});
-  final String text;
+class _SlideDeckViewer extends StatelessWidget {
+  final PageController controller;
+  final List<SprintSlide> slides;
+  final Function(int) onPageChanged;
+
+  const _SlideDeckViewer({
+    required this.controller,
+    required this.slides,
+    required this.onPageChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: Colors.red.withOpacity(0.07),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: Colors.red.withOpacity(0.25)),
+    return Column(
+      children: [
+        Expanded(
+          child: PageView.builder(
+            controller: controller,
+            onPageChanged: onPageChanged,
+            itemCount: slides.length,
+            physics: const BouncingScrollPhysics(),
+            itemBuilder: (context, index) {
+              return Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                child: _SlideCard(slide: slides[index]),
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: () => controller.previousPage(
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeOutCubic,
+                ),
+                style: IconButton.styleFrom(
+                  backgroundColor: SprintSlidesApp.kCardBg,
+                  padding: const EdgeInsets.all(16),
+                  side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                ),
+                icon: const Icon(Icons.chevron_left),
+              ),
+              const SizedBox(width: 24),
+              SizedBox(
+                height: 40,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: List.generate(slides.length, (i) {
+                    return AnimatedBuilder(
+                      animation: controller,
+                      builder: (ctx, child) {
+                        double selectedness = 0.0;
+                        if (controller.hasClients &&
+                            controller.position.haveDimensions) {
+                          selectedness = 1.0 -
+                              ((controller.page ?? 0) - i)
+                                  .abs()
+                                  .clamp(0.0, 1.0);
+                        } else {
+                          selectedness = i == 0 ? 1.0 : 0.0;
+                        }
+
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          height: 6,
+                          width: 6 + (24 * selectedness),
+                          decoration: BoxDecoration(
+                            color: Color.lerp(Colors.grey[800],
+                                SprintSlidesApp.kPrimary, selectedness),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        );
+                      },
+                    );
+                  }),
+                ),
+              ),
+              const SizedBox(width: 24),
+              IconButton(
+                onPressed: () => controller.nextPage(
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeOutCubic,
+                ),
+                style: IconButton.styleFrom(
+                  backgroundColor: SprintSlidesApp.kCardBg,
+                  padding: const EdgeInsets.all(16),
+                  side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                ),
+                icon: const Icon(Icons.chevron_right),
+              ),
+            ],
+          ),
+        )
+      ],
+    );
+  }
+}
+
+class _SlideCard extends StatelessWidget {
+  final SprintSlide slide;
+
+  const _SlideCard({required this.slide});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: SprintSlidesApp.kCardBg,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.error_outline, color: Colors.red),
-            const SizedBox(width: 10),
-            Expanded(
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: SprintSlidesApp.kPrimary.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Text(
-                text,
-                style: const TextStyle(color: Colors.red),
+                slide.type.toUpperCase().replaceAll("_", " "),
+                style: const TextStyle(
+                  color: Color(0xFF818CF8),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              slide.title,
+              style: const TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
+                height: 1.1,
+                color: SprintSlidesApp.kTextMain,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Text(
+                  slide.content,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    height: 1.6,
+                    color: Color(0xFFD1D5DB),
+                  ),
+                ),
               ),
             ),
           ],
@@ -405,153 +666,59 @@ class _ErrorBox extends StatelessWidget {
   }
 }
 
-class _LoadingBox extends StatelessWidget {
-  const _LoadingBox();
+class _EmptyStateDisplay extends StatelessWidget {
+  const _EmptyStateDisplay();
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: Colors.black.withOpacity(0.07)),
-      ),
-      child: const Padding(
-        padding: EdgeInsets.all(28),
-        child: Center(
-          child: Column(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 14),
-              Text("Generating your Sprint Deck..."),
-            ],
-          ),
-        ),
-      ),
+    return Center(
+      child: Text("Enter a topic to generate slides!",
+          style: TextStyle(color: Colors.grey[400])),
     );
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+class _LoadingIndicator extends StatelessWidget {
+  const _LoadingIndicator();
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: Colors.black.withOpacity(0.07)),
-      ),
-      child: const Padding(
-        padding: EdgeInsets.all(28),
-        child: Center(
-          child: Text(
-            "Enter a topic + Groq API key, then generate your 5-slide Sprint Deck ⚡",
-            textAlign: TextAlign.center,
-          ),
-        ),
-      ),
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const CircularProgressIndicator(strokeWidth: 3),
+        const SizedBox(height: 16),
+        Text("Generating...", style: TextStyle(color: Colors.grey[400])),
+      ],
     );
   }
 }
 
-class SlideViewer extends StatelessWidget {
-  const SlideViewer({
-    super.key,
-    required this.slides,
-    required this.index,
-    required this.onPrev,
-    required this.onNext,
-    required this.brand,
-  });
-
-  final List<SprintSlide> slides;
-  final int index;
-  final VoidCallback onPrev;
-  final VoidCallback onNext;
-  final Color brand;
+class _ErrorDisplay extends StatelessWidget {
+  final String error;
+  const _ErrorDisplay({required this.error});
 
   @override
   Widget build(BuildContext context) {
-    final slide = slides[index];
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: Colors.black.withOpacity(0.07)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: brand.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: brand.withOpacity(0.25)),
-                  ),
-                  child: Text(
-                    slide.type.toUpperCase(),
-                    style: TextStyle(
-                      color: brand,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                ),
-                Text(
-                  "Slide ${index + 1} / ${slides.length}",
-                  style: TextStyle(color: Colors.black.withOpacity(0.55)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              slide.title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              slide.content,
-              style: const TextStyle(fontSize: 16, height: 1.45),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                OutlinedButton.icon(
-                  onPressed: index == 0 ? null : onPrev,
-                  icon: const Icon(Icons.chevron_left),
-                  label: const Text("Prev"),
-                ),
-                const SizedBox(width: 10),
-                OutlinedButton.icon(
-                  onPressed: index == slides.length - 1 ? null : onNext,
-                  icon: const Icon(Icons.chevron_right),
-                  label: const Text("Next"),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+    return Text(error, style: const TextStyle(color: Colors.redAccent));
   }
 }
 
-/// -------------------------
-/// Model
-/// -------------------------
+String _cleanBackendError(String body) {
+  try {
+    final parsed = jsonDecode(body);
+    final detail = parsed["detail"];
+
+    if (detail is String) return detail;
+    if (detail is Map && detail["error"] != null) return detail["error"].toString();
+
+    return "Backend error. Try again.";
+  } catch (_) {
+    if (body.length > 200) return body.substring(0, 200) + "...";
+    return body;
+  }
+}
+
 class SprintSlide {
   final String type;
   final String title;
@@ -565,9 +732,17 @@ class SprintSlide {
 
   factory SprintSlide.fromJson(Map<String, dynamic> json) {
     return SprintSlide(
-      type: (json["type"] ?? "").toString(),
+      type: (json["type"] ?? "slide").toString(),
       title: (json["title"] ?? "").toString(),
       content: (json["content"] ?? "").toString(),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      "type": type,
+      "title": title,
+      "content": content,
+    };
   }
 }
