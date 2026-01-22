@@ -24,7 +24,7 @@ load_dotenv()
 # -----------------------------
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 if not GROQ_API_KEY:
-    print("⚠️ GROQ_API_KEY is missing. Set it in .env or Cloud Run env vars.")
+    print("⚠️ GROQ_API_KEY is missing. Set it in .env or Render env vars.")
 
 # -----------------------------
 # FastAPI app
@@ -43,8 +43,7 @@ app.add_middleware(
 # Paths
 # -----------------------------
 BASE_DIR = os.path.dirname(__file__)
-LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")  # <- backend/assets/logo.png
-
+LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")  # backend/assets/logo.png
 
 # -----------------------------
 # Request schemas
@@ -166,7 +165,7 @@ def safe_json_load(raw: str) -> Dict[str, Any]:
             status_code=500,
             detail={
                 "error": "Invalid JSON from model",
-                "cleaned_preview": cleaned[:900],  # limit spam
+                "cleaned_preview": cleaned[:900],
             },
         )
 
@@ -197,13 +196,7 @@ def normalize_slides(decoded: Dict[str, Any], n: int) -> Optional[List[Dict[str,
         title = str(s.get("title", "")).strip()
         content = str(s.get("content", "")).strip()
 
-        final.append(
-            {
-                "type": slide_type,
-                "title": title,
-                "content": content,
-            }
-        )
+        final.append({"type": slide_type, "title": title, "content": content})
 
     return final
 
@@ -220,14 +213,16 @@ def groq_chat(prompt: str, model: str, max_tokens: int, json_mode: bool = True) 
     payload: Dict[str, Any] = {
         "model": model,
         "messages": [
-            {"role": "system", "content": "You output ONLY valid JSON. Never add any other text."},
+            {
+                "role": "system",
+                "content": "You output ONLY valid JSON. Never add any other text.",
+            },
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.25,
         "max_tokens": max_tokens,
     }
 
-    # Ask for strict JSON object
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
 
@@ -267,63 +262,7 @@ def wrap_text(text: str, max_chars: int = 95) -> List[str]:
     return lines
 
 
-# -----------------------------
-# Routes
-# -----------------------------
-@app.get("/")
-def root():
-    return {"ok": True, "service": "SprintSlides Backend", "status": "running"}
-
-
-@app.post("/generateDeck")
-def generate_deck(req: DeckRequest):
-    topic = req.topic.strip()
-    n = int(req.slideCount or 5)
-
-    if not topic:
-        raise HTTPException(status_code=400, detail="topic is required")
-    if n < 3 or n > 15:
-        raise HTTPException(status_code=400, detail="slideCount must be between 3 and 15")
-
-    model = "llama-3.1-8b-instant"
-    max_tokens = estimate_max_tokens(n)
-
-    # ---- Attempt 1
-    prompt = build_prompt(topic, n)
-    raw1 = groq_chat(prompt, model=model, max_tokens=max_tokens, json_mode=True)
-    decoded1 = safe_json_load(raw1)
-    slides = normalize_slides(decoded1, n)
-
-    # ---- Retry
-    if slides is None:
-        retry_prompt = build_retry_prompt(topic, n)
-        raw2 = groq_chat(retry_prompt, model=model, max_tokens=max_tokens + 1200, json_mode=True)
-        decoded2 = safe_json_load(raw2)
-        slides = normalize_slides(decoded2, n)
-
-        if slides is None:
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": f"Model output inconsistent. Expected {n} slides.",
-                    "attempt1_preview": str(decoded1)[:900],
-                    "attempt2_preview": str(decoded2)[:900],
-                },
-            )
-
-    return {"ok": True, "slides": slides}
-
-
-@app.post("/downloadPdf")
-def download_pdf(req: PdfRequest):
-    topic = req.topic.strip()
-    slides = req.slides
-
-    if not topic:
-        raise HTTPException(status_code=400, detail="topic is required")
-    if not isinstance(slides, list) or len(slides) == 0:
-        raise HTTPException(status_code=400, detail="slides list is required")
-
+def build_pdf(topic: str, slides: List[Dict[str, Any]]) -> bytes:
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
@@ -451,10 +390,111 @@ def download_pdf(req: PdfRequest):
 
     c.save()
     buffer.seek(0)
+    return buffer.read()
 
+
+# -----------------------------
+# Routes
+# -----------------------------
+@app.get("/")
+def root():
+    return {"ok": True, "service": "SprintSlides Backend", "status": "running"}
+
+
+@app.post("/generateDeck")
+def generate_deck(req: DeckRequest):
+    topic = req.topic.strip()
+    n = int(req.slideCount or 5)
+
+    if not topic:
+        raise HTTPException(status_code=400, detail="topic is required")
+    if n < 3 or n > 15:
+        raise HTTPException(status_code=400, detail="slideCount must be between 3 and 15")
+
+    model = "llama-3.1-8b-instant"
+    max_tokens = estimate_max_tokens(n)
+
+    # Attempt 1
+    prompt = build_prompt(topic, n)
+    raw1 = groq_chat(prompt, model=model, max_tokens=max_tokens, json_mode=True)
+    decoded1 = safe_json_load(raw1)
+    slides = normalize_slides(decoded1, n)
+
+    # Retry once
+    if slides is None:
+        retry_prompt = build_retry_prompt(topic, n)
+        raw2 = groq_chat(retry_prompt, model=model, max_tokens=max_tokens + 1200, json_mode=True)
+        decoded2 = safe_json_load(raw2)
+        slides = normalize_slides(decoded2, n)
+
+        if slides is None:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": f"Model output inconsistent. Expected {n} slides.",
+                    "attempt1_preview": str(decoded1)[:900],
+                    "attempt2_preview": str(decoded2)[:900],
+                },
+            )
+
+    return {"ok": True, "slides": slides}
+
+
+# ✅ POST PDF (optional if you want Flutter to send slides)
+@app.post("/downloadPdf")
+def download_pdf(req: PdfRequest):
+    topic = req.topic.strip()
+    slides = req.slides
+
+    if not topic:
+        raise HTTPException(status_code=400, detail="topic is required")
+    if not isinstance(slides, list) or len(slides) == 0:
+        raise HTTPException(status_code=400, detail="slides list is required")
+
+    pdf_bytes = build_pdf(topic, slides)
     filename = f"SprintSlidesAI_{topic.replace(' ', '_')}.pdf"
+
     return Response(
-        content=buffer.read(),
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ✅ GET PDF (BEST for Flutter Web download)
+@app.get("/downloadPdf")
+def download_pdf_get(topic: str, slideCount: int = 5):
+    topic = topic.strip()
+    n = int(slideCount or 5)
+
+    if not topic:
+        raise HTTPException(status_code=400, detail="topic is required")
+    if n < 3 or n > 15:
+        raise HTTPException(status_code=400, detail="slideCount must be between 3 and 15")
+
+    # generate slides again on backend
+    model = "llama-3.1-8b-instant"
+    max_tokens = estimate_max_tokens(n)
+
+    prompt = build_prompt(topic, n)
+    raw1 = groq_chat(prompt, model=model, max_tokens=max_tokens, json_mode=True)
+    decoded1 = safe_json_load(raw1)
+    slides = normalize_slides(decoded1, n)
+
+    if slides is None:
+        retry_prompt = build_retry_prompt(topic, n)
+        raw2 = groq_chat(retry_prompt, model=model, max_tokens=max_tokens + 1200, json_mode=True)
+        decoded2 = safe_json_load(raw2)
+        slides = normalize_slides(decoded2, n)
+
+        if slides is None:
+            raise HTTPException(status_code=500, detail="Failed to generate slides for PDF")
+
+    pdf_bytes = build_pdf(topic, slides)
+    filename = f"SprintSlidesAI_{topic.replace(' ', '_')}.pdf"
+
+    return Response(
+        content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

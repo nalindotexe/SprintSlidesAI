@@ -112,8 +112,10 @@ class _SprintSlidesHomeState extends State<SprintSlidesHome> {
   int _currentIndex = 0;
 
   // ✅ Backend URLs
-  static const String _backendUrl = "http://localhost:8000/generateDeck";
-  static const String _pdfUrl = "http://localhost:8000/downloadPdf";
+  static const String _backendBase = "https://sprintslidesai.onrender.com"; 
+  static const String _backendUrl = "$_backendBase/generateDeck";
+  static const String _pdfUrl = "$_backendBase/downloadPdf";
+
 
   @override
   void dispose() {
@@ -338,7 +340,7 @@ class _SprintSlidesHomeState extends State<SprintSlidesHome> {
       bottomNavigationBar: const Padding(
         padding: EdgeInsets.only(bottom: 24),
         child: Text(
-          "Powered by Flutter + Backend ⚡",
+          "Powered by Flutter + Python ⚡",
           textAlign: TextAlign.center,
           style: TextStyle(color: SprintSlidesApp.kTextSub, fontSize: 12),
         ),
