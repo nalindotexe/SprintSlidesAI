@@ -8,3 +8,13 @@ venv/
 .env
 __pycache__/
 *.pyc
+# Firebase local cache
+.firebase/
+
+# Flutter build + tool cache
+build/
+.dart_tool/
+
+# Python env + secrets
+venv/
+.env
