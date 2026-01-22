@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:html' as html;
 
 import 'package:flutter/material.dart';
@@ -106,16 +105,16 @@ class _SprintSlidesHomeState extends State<SprintSlidesHome> {
 
   // State
   double _numSlides = 5;
-  bool _loading = false;
+  bool _loading = false; // deck generation
+  bool _pdfLoading = false; // pdf generation
   String? _error;
   List<SprintSlide> _slides = [];
   int _currentIndex = 0;
 
   // ✅ Backend URLs
-  static const String _backendBase = "https://sprintslidesai.onrender.com"; 
+  static const String _backendBase = "https://sprintslidesai.onrender.com";
   static const String _backendUrl = "$_backendBase/generateDeck";
   static const String _pdfUrl = "$_backendBase/downloadPdf";
-
 
   @override
   void dispose() {
@@ -202,7 +201,7 @@ class _SprintSlidesHomeState extends State<SprintSlidesHome> {
     }
 
     setState(() {
-      _loading = true;
+      _pdfLoading = true;
       _error = null;
     });
 
@@ -222,7 +221,7 @@ class _SprintSlidesHomeState extends State<SprintSlidesHome> {
         throw Exception(_cleanBackendError(resp.body));
       }
 
-      final Uint8List pdfBytes = resp.bodyBytes;
+      final pdfBytes = resp.bodyBytes;
       final blob = html.Blob([pdfBytes], 'application/pdf');
       final url = html.Url.createObjectUrlFromBlob(blob);
 
@@ -241,7 +240,7 @@ class _SprintSlidesHomeState extends State<SprintSlidesHome> {
         _error = e.toString().replaceAll("Exception:", "").trim();
       });
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _pdfLoading = false);
     }
   }
 
@@ -254,6 +253,8 @@ class _SprintSlidesHomeState extends State<SprintSlidesHome> {
 
   @override
   Widget build(BuildContext context) {
+    final downloadEnabled = _slides.isNotEmpty && !_loading && !_pdfLoading;
+
     return Scaffold(
       appBar: AppBar(
         centerTitle: false,
@@ -313,7 +314,8 @@ class _SprintSlidesHomeState extends State<SprintSlidesHome> {
                   onGenerate: _generateDeck,
                   onDownloadPdf: _downloadPdf,
                   isLoading: _loading,
-                  downloadEnabled: _slides.isNotEmpty && !_loading,
+                  pdfLoading: _pdfLoading,
+                  downloadEnabled: downloadEnabled,
                 ),
               ),
               const SizedBox(height: 30),
@@ -360,6 +362,7 @@ class _InputCard extends StatelessWidget {
   final VoidCallback onGenerate;
   final VoidCallback onDownloadPdf;
   final bool isLoading;
+  final bool pdfLoading;
   final bool downloadEnabled;
 
   const _InputCard({
@@ -369,6 +372,7 @@ class _InputCard extends StatelessWidget {
     required this.onGenerate,
     required this.onDownloadPdf,
     required this.isLoading,
+    required this.pdfLoading,
     required this.downloadEnabled,
   });
 
@@ -470,9 +474,8 @@ class _InputCard extends StatelessWidget {
                           strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(Icons.auto_awesome),
-              label: Text(isLoading
-                  ? "Generating Deck..."
-                  : "Generate Sprint Deck"),
+              label:
+                  Text(isLoading ? "Generating Deck..." : "Generate Sprint Deck"),
             ),
           ),
           const SizedBox(height: 14),
@@ -480,8 +483,14 @@ class _InputCard extends StatelessWidget {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: downloadEnabled ? onDownloadPdf : null,
-              icon: const Icon(Icons.picture_as_pdf_outlined),
-              label: const Text("Download PDF"),
+              icon: pdfLoading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.picture_as_pdf_outlined),
+              label: Text(pdfLoading ? "Creating PDF..." : "Download PDF"),
               style: OutlinedButton.styleFrom(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
