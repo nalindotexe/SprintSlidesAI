@@ -1,122 +1,150 @@
-Great — here’s an updated **README** with a **screenshot section** and **installation steps** added. You can paste this into your GitHub repo!
+# SprintSlides AI 🧠⚡
+
+![Flutter](https://img.shields.io/badge/Flutter-Web%20%7C%20Mobile-02569B?logo=flutter&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white)
+![Groq](https://img.shields.io/badge/Groq-LLM%20API-orange)
+![Firebase](https://img.shields.io/badge/Firebase-Hosting-FFCA28?logo=firebase&logoColor=black)
+![Render](https://img.shields.io/badge/Render-Backend%20Hosting-46E3B7?logo=render&logoColor=black)
+![PDF](https://img.shields.io/badge/PDF-Export-red?logo=adobeacrobatreader&logoColor=white)
+![Status](https://img.shields.io/badge/Status-Live-success)
 
 ---
 
-# 🧠 SprintSlides
+## 🚀 SprintSlides AI
 
-**SprintSlides** is a web app made for students to **revise academic topics quickly and smartly** using slide-style summaries and organized content — perfect for fast review before exams or tests.
+**SprintSlides AI** is an AI-powered revision tool that converts academic topics into **structured, exam-focused study slides** and allows students to **download them as PDFs**.
 
-👉 Live Site: [https://sprintslides.web.app/](https://sprintslides.web.app/)
-👉 GitHub Repo: [https://github.com/Pragna-15/SprintSlidesAI](https://github.com/Pragna-15/SprintSlidesAI)
+Built for speed, clarity, and efficiency — SprintSlides helps students *study smarter, not longer*.
+
+🔗 **Live App:** https://sprintslides.web.app  
+🔗 **Backend API:** https://sprintslidesai.onrender.com  
 
 ---
 
-## 📸 Screenshot
+## ✨ Features
 
-> *Add a screenshot here to show what the app looks like.*
-> You can take a snapshot of the homepage or a revision slide view.
+- 🧠 **AI Slide Generation**  
+  Generate **5–15 structured revision slides** from any topic.
 
+- ⚡ **Ultra-Fast Inference**  
+  Powered by **Groq API (LLaMA 3)** for low-latency, high-quality responses.
+
+- 📄 **PDF Export**  
+  Download a professionally formatted PDF including:
+  - Title page
+  - App logo
+  - Slide numbering
+  - Clean layout for printing & offline study
+
+- 🎯 **Exam-Oriented Content**  
+  Slides focus on:
+  - Core concepts  
+  - Active recall  
+  - Examples & exam tips  
+
+- 🌐 **Cross-Platform UI**  
+  Built with Flutter → works on **Web, Android, and iOS**.
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+- Flutter (Web)
+- Material 3 UI
+- Firebase Hosting
+
+### Backend
+- FastAPI (Python)
+- Groq API (LLaMA 3.1 8B Instant)
+- ReportLab (PDF generation)
+- Render (Backend hosting)
+
+---
+
+## 🧱 Architecture
+
+Flutter Web App
+|
+| POST /generateDeck
+v
+FastAPI Backend (Render)
+|
+| Groq API (LLM)
+v
+Structured JSON Slides
+|
+| POST /downloadPdf
+v
+PDF Generation (ReportLab)
+
+
+---
+
+## 🧪 Local Development
+
+### Prerequisites
+- Flutter SDK
+- Python 3.10+
+- Groq API Key
+
+---
+
+### Backend Setup
+
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
-![SprintSlides Preview](./screenshots/homepage.png)
+Create .env file:
+```bash
+GROQ_API_KEY=your_groq_api_key_here
 ```
+Run backend:
+```bash
+uvicorn main:app --reload
+```
+Frontend Setup
+```bash
+flutter pub get
+flutter run -d chrome
+```
+📄 PDF Export
 
-> **Tip:** Create a folder named `screenshots` in your repo and upload the image as `homepage.png` or similar.
+  Generated server-side using ReportLab
+    Includes:
+       Logo branding
+        Topic title
+        Slide headers
+        Automatic text wrapping
 
----
+🎯 Motivation
 
-## 🚀 What Is SprintSlides?
+SprintSlides was built to solve information overload during exams.
 
-SprintSlides turns subject content into **short, easy-to-read revision slides** so students don’t have to read long notes or textbooks repeatedly. It highlights the most important points in a clear format.
+It applies:
 
-✔ Quick revision
-✔ Topic-wise slides
-✔ Web-based (no install needed)
-✔ Works on phones, tablets, laptops
+   The 80/20 rule
+    Active recall
+    Structured learning
 
----
+So students revise faster and more effectively.
 
-## 🛠 Installation (for Development)
+### 👨‍💻 Developers
+   Nalin Singh
+    GitHub: https://github.com/nalindotexe
+   
+   Pragna K.
+    GitHub: https://github.com/Pragna-15
 
-If you want to run the project locally or contribute:
+🤝 Contributing
 
-### 📌 Requirements
+Pull requests are welcome.
 
-Make sure you have:
+Ideas for future features:
+    Flashcards, Quizzes, User accounts,Saved decks, Themed PDFs
 
-* Node.js installed (v14+)
-* Git
 
-### 🚧 Steps
-
-1. **Clone the repository**
-
-   ```bash
-   git clone https://github.com/Pragna-15/SprintSlidesAI.git
-   ```
-
-2. **Navigate to the project folder**
-
-   ```bash
-   cd SprintSlidesAI
-   ```
-
-3. **Install dependencies**
-
-   ```bash
-   npm install
-   ```
-
-4. **Start the development server**
-
-   ```bash
-   npm start
-   ```
-
-5. Open your browser and go to:
-
-   ```
-   http://localhost:3000
-   ```
-
----
-
-## 💡 Key Features
-
-✔ Organized slide content for revision
-✔ Clean, student-friendly UI
-✔ Topic filtering
-✔ Fast access to important concepts
-
----
-
-## 📌 How to Use
-
-1. Visit [https://sprintslides.web.app/](https://sprintslides.web.app/)
-2. Choose the subject or topic you want to revise
-3. Go through the slides and review key points
-4. Use it for tests, homework prep, or final exam revision
-
----
-
-## 🎯 Purpose
-
-SprintSlides was built to help students study **efficiently and confidently** — transforming long notes into short, useful slides that stick in your memory.
-
----
-
-## 🙌 Contributions
-
-Want to improve SprintSlides? You can:
-
-* Add new topics
-* Improve UI
-* Optimize performance
-* Fix issues
-
-Feel free to open issues or submit pull requests!
-
----
-
-### ❤️ Thanks for checking out SprintSlides!
-
----
+Built with ❤️ for students, speed, and hackathons.
