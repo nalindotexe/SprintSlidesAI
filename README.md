@@ -133,11 +133,13 @@ It applies:
 So students revise faster and more effectively.
 
 ### 👨‍💻 Developers
-   Nalin Singh
-    GitHub: https://github.com/nalindotexe
+   Nalin "nalindotexe" Singh 
+    
+  GitHub: https://github.com/nalindotexe
    
    Pragna K.
-    GitHub: https://github.com/Pragna-15
+  
+  GitHub: https://github.com/Pragna-15
 
 🤝 Contributing
 
